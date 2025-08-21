@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saturation Vapor Pressure Over Ice and Water</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 10px;
+            font-size: 2.2em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        .subtitle {
+            text-align: center;
+            color: #7f8c8d;
+            margin-bottom: 30px;
+            font-style: italic;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+        label {
+            font-weight: 600;
+            color: #34495e;
+            font-size: 0.9em;
+        }
+        select, input {
+            padding: 8px 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            background: white;
+        }
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 10px rgba(102, 126, 234, 0.3);
+        }
+        canvas {
+            border: 2px solid #ddd;
+            border-radius: 12px;
+            display: block;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            background: rgba(255,255,255,0.8);
+            border-radius: 20px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+        .line-sample {
+            width: 25px;
+            height: 3px;
+            border-radius: 2px;
+        }
+        .info-box {
+            margin-top: 20px;
+            padding: 20px;
+            background: linear-gradient(135deg, #f6f9fc 0%, #e9ecef 100%);
+            border-radius: 12px;
+            border-left: 5px solid #667eea;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        .highlight {
+            background: rgba(255, 235, 59, 0.3);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Saturation Vapor Pressure</h1>
+        <p class="subtitle">Over Ice and Liquid Water vs Temperature</p>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>Scale:</label>
+                <select id="scaleType">
+                    <option value="linear">Linear</option>
+                    <option value="log" selected>Logarithmic</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Temperature Range:</label>
+                <select id="tempRange">
+                    <option value="full">Full Range (-30°C to 40°C)</option>
+                    <option value="freezing">Around Freezing (-10°C to 10°C)</option>
+                    <option value="cold">Cold Range (-30°C to 0°C)</option>
+                    <option value="warm">Warm Range (0°C to 40°C)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Grid:</label>
+                <input type="checkbox" id="showGrid" checked>
+            </div>
+        </div>
+
+        <canvas id="vaporPressureCanvas" width="900" height="600"></canvas>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="line-sample" style="background: #e74c3c;"></div>
+                <span>Over Liquid Water</span>
+            </div>
+            <div class="legend-item">
+                <div class="line-sample" style="background: #3498db;"></div>
+                <span>Over Ice</span>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <strong>Key Observations:</strong><br>
+            • At 0°C, there's a <span class="highlight">difference</span> between saturation vapor pressure over ice (~6.11 hPa) and water (~6.11 hPa)<br>
+            • Below 0°C, vapor pressure over ice is <span class="highlight">lower</span> than over supercooled water<br>
+            • This difference drives the <span class="highlight">Bergeron-Findeisen process</span> in mixed-phase clouds<br>
+            • Data source: Foken et al. (2021), Handbook of Atmospheric Measurements
+        </div>
+    </div>
+
+    <script>
+        // Saturation vapor pressure data over water (hPa)
+        const waterData = {
+            40: 73.849, 39: 70.002, 38: 66.328, 37: 62.823, 36: 59.479, 35: 56.290,
+            34: 53.251, 33: 50.354, 32: 47.596, 31: 44.969, 30: 42.470, 29: 40.092,
+            28: 37.831, 27: 35.681, 26: 33.639, 25: 31.699, 24: 29.858, 23: 28.111,
+            22: 26.453, 21: 24.882, 20: 23.393, 19: 21.983, 18: 20.647, 17: 19.384,
+            16: 18.188, 15: 17.058, 14: 15.990, 13: 14.981, 12: 14.028, 11: 13.130,
+            10: 12.282, 9: 11.483, 8: 10.730, 7: 10.021, 6: 9.354, 5: 8.726,
+            4: 8.135, 3: 7.581, 2: 7.060, 1: 6.571, 0: 6.112, '-1': 5.682,
+            '-2': 5.279, '-3': 4.901, '-4': 4.548, '-5': 4.218, '-6': 3.909,
+            '-7': 3.620, '-8': 3.350, '-9': 3.099, '-10': 2.864, '-11': 2.646,
+            '-12': 2.442, '-13': 2.253, '-14': 2.077, '-15': 1.913, '-16': 1.761,
+            '-17': 1.619, '-18': 1.488, '-19': 1.367, '-20': 1.255, '-21': 1.150,
+            '-22': 1.054, '-23': 0.965, '-24': 0.883, '-25': 0.807, '-26': 0.737,
+            '-27': 0.673, '-28': 0.614, '-29': 0.559, '-30': 0.509
+        };
+
+        // Saturation vapor pressure data over ice (hPa)
+        const iceData = {
+            0: 6.1115, '-1': 5.6266, '-2': 5.1770, '-3': 4.7604, '-4': 4.3745,
+            '-5': 4.0174, '-6': 3.6870, '-7': 3.3817, '-8': 3.0995, '-9': 2.8391,
+            '-10': 2.5988, '-11': 2.3772, '-12': 2.1730, '-13': 1.9849, '-14': 1.8119,
+            '-15': 1.6528, '-16': 1.5065, '-17': 1.3722, '-18': 1.2490, '-19': 1.1360,
+            '-20': 1.0324, '-21': 0.9376, '-22': 0.8508, '-23': 0.7715, '-24': 0.6990,
+            '-25': 0.6328, '-26': 0.5724, '-27': 0.5173, '-28': 0.4672, '-29': 0.4216,
+            '-30': 0.3801
+        };
+
+        function drawPlot() {
+            const canvas = document.getElementById('vaporPressureCanvas');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            const scaleType = document.getElementById('scaleType').value;
+            const tempRange = document.getElementById('tempRange').value;
+            const showGrid = document.getElementById('showGrid').checked;
+            
+            // Clear canvas
+            ctx.fillStyle = '#fafafa';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Set margins
+            const margin = { top: 40, right: 80, bottom: 80, left: 80 };
+            const plotWidth = width - margin.left - margin.right;
+            const plotHeight = height - margin.top - margin.bottom;
+            
+            // Determine temperature range
+            let tempMin, tempMax;
+            switch(tempRange) {
+                case 'freezing': tempMin = -10; tempMax = 10; break;
+                case 'cold': tempMin = -30; tempMax = 0; break;
+                case 'warm': tempMin = 0; tempMax = 40; break;
+                default: tempMin = -30; tempMax = 40;
+            }
+            
+            // Get pressure range
+            let pressures = [];
+            for (let temp = tempMin; temp <= tempMax; temp++) {
+                if (waterData[temp] !== undefined) pressures.push(waterData[temp]);
+                if (iceData[temp] !== undefined && temp <= 0) pressures.push(iceData[temp]);
+            }
+            
+            const pressureMin = Math.min(...pressures);
+            const pressureMax = Math.max(...pressures);
+            
+            // Scale functions
+            function xScale(temp) {
+                return margin.left + (temp - tempMin) / (tempMax - tempMin) * plotWidth;
+            }
+            
+            function yScale(pressure) {
+                if (scaleType === 'log') {
+                    const logMin = Math.log10(Math.max(pressureMin, 0.001));
+                    const logMax = Math.log10(pressureMax);
+                    const logP = Math.log10(Math.max(pressure, 0.001));
+                    return margin.top + (logMax - logP) / (logMax - logMin) * plotHeight;
+                } else {
+                    return margin.top + (pressureMax - pressure) / (pressureMax - pressureMin) * plotHeight;
+                }
+            }
+            
+            // Draw grid
+            if (showGrid) {
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth = 1;
+                
+                // Vertical grid lines (temperature)
+                for (let temp = Math.ceil(tempMin/5)*5; temp <= tempMax; temp += 5) {
+                    const x = xScale(temp);
+                    ctx.beginPath();
+                    ctx.moveTo(x, margin.top);
+                    ctx.lineTo(x, height - margin.bottom);
+                    ctx.stroke();
+                }
+                
+                // Horizontal grid lines (pressure)
+                if (scaleType === 'log') {
+                    for (let i = -2; i <= 2; i++) {
+                        for (let j = 1; j <= 9; j++) {
+                            const pressure = j * Math.pow(10, i);
+                            if (pressure >= pressureMin && pressure <= pressureMax) {
+                                const y = yScale(pressure);
+                                ctx.beginPath();
+                                ctx.moveTo(margin.left, y);
+                                ctx.lineTo(width - margin.right, y);
+                                ctx.stroke();
+                            }
+                        }
+                    }
+                } else {
+                    const step = (pressureMax - pressureMin) / 10;
+                    for (let pressure = pressureMin; pressure <= pressureMax; pressure += step) {
+                        const y = yScale(pressure);
+                        ctx.beginPath();
+                        ctx.moveTo(margin.left, y);
+                        ctx.lineTo(width - margin.right, y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            // Draw axes
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            
+            // X-axis
+            ctx.beginPath();
+            ctx.moveTo(margin.left, height - margin.bottom);
+            ctx.lineTo(width - margin.right, height - margin.bottom);
+            ctx.stroke();
+            
+            // Y-axis
+            ctx.beginPath();
+            ctx.moveTo(margin.left, margin.top);
+            ctx.lineTo(margin.left, height - margin.bottom);
+            ctx.stroke();
+            
+            // Plot water data
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            let first = true;
+            for (let temp = tempMin; temp <= tempMax; temp++) {
+                if (waterData[temp] !== undefined) {
+                    const x = xScale(temp);
+                    const y = yScale(waterData[temp]);
+                    if (first) {
+                        ctx.moveTo(x, y);
+                        first = false;
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+            }
+            ctx.stroke();
+            
+            // Plot ice data
+            ctx.strokeStyle = '#3498db';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            first = true;
+            for (let temp = Math.min(tempMin, 0); temp <= 0; temp++) {
+                if (iceData[temp] !== undefined) {
+                    const x = xScale(temp);
+                    const y = yScale(iceData[temp]);
+                    if (first) {
+                        ctx.moveTo(x, y);
+                        first = false;
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+            }
+            ctx.stroke();
+            
+            // Add labels
+            ctx.fillStyle = '#333';
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            
+            // X-axis labels
+            for (let temp = Math.ceil(tempMin/5)*5; temp <= tempMax; temp += 5) {
+                const x = xScale(temp);
+                ctx.fillText(`${temp}°C`, x, height - margin.bottom + 25);
+            }
+            
+            // Y-axis labels
+            ctx.textAlign = 'right';
+            if (scaleType === 'log') {
+                for (let i = -2; i <= 2; i++) {
+                    const pressure = Math.pow(10, i);
+                    if (pressure >= pressureMin && pressure <= pressureMax) {
+                        const y = yScale(pressure);
+                        ctx.fillText(pressure >= 1 ? pressure.toFixed(0) : pressure.toFixed(3), margin.left - 10, y + 5);
+                    }
+                }
+            } else {
+                const step = (pressureMax - pressureMin) / 8;
+                for (let i = 0; i <= 8; i++) {
+                    const pressure = pressureMin + i * step;
+                    const y = yScale(pressure);
+                    ctx.fillText(pressure.toFixed(1), margin.left - 10, y + 5);
+                }
+            }
+            
+            // Axis titles
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Temperature (°C)', width / 2, height - 20);
+            
+            // Y-axis title (rotated)
+            ctx.save();
+            ctx.translate(25, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Saturation Vapor Pressure (hPa)', 0, 0);
+            ctx.restore();
+            
+            // Mark 0°C line
+            if (tempMin <= 0 && tempMax >= 0) {
+                ctx.strokeStyle = '#95a5a6';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                const x = xScale(0);
+                ctx.beginPath();
+                ctx.moveTo(x, margin.top);
+                ctx.lineTo(x, height - margin.bottom);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                ctx.fillStyle = '#7f8c8d';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('0°C', x, margin.top - 5);
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('scaleType').addEventListener('change', drawPlot);
+        document.getElementById('tempRange').addEventListener('change', drawPlot);
+        document.getElementById('showGrid').addEventListener('change', drawPlot);
+        
+        // Initial draw
+        drawPlot();
+    </script>
+</body>
+</html>
