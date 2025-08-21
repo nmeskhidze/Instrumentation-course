@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Dynamic Sensor Footprint</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f5f5f5;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    .control-group {
+      display: flex;
+      flex-direction: column;
+    }
+    label {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #333;
+    }
+    input[type="range"] {
+      width: 100%;
+      margin: 5px 0;
+    }
+    select {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    canvas {
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      display: block;
+      margin: 0 auto;
+      background: white;
+    }
+    .legend {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 15px;
+      font-size: 12px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .color-box {
+      width: 20px;
+      height: 15px;
+      border: 1px solid #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 style="text-align: center; color: #333;">Dynamic Sensor Footprint</h1>
+    
+    <div class="controls">
+      <div class="control-group">
+        <label>Sensor Height: <span id="heightVal">10</span> m</label>
+        <input type="range" id="height" min="2" max="50" step="1" value="10">
+      </div>
+      
+      <div class="control-group">
+        <label>Atmospheric Stability:</label>
+        <select id="stability">
+          <option value="very_stable">Very Stable</option>
+          <option value="stable">Stable</option>
+          <option value="neutral" selected>Neutral</option>
+          <option value="slightly_unstable">Unstable</option>
+          <option value="unstable">Very Unstable</option>
+        </select>
+      </div>
+    </div>
+
+    <canvas id="footprintCanvas" width="800" height="400"></canvas>
+    
+    <div class="legend">
+      <div class="legend-item">
+        <div class="color-box" style="background: #ff0000;"></div>
+        <span>High contribution (90-100%)</span>
+      </div>
+      <div class="legend-item">
+        <div class="color-box" style="background: #ff8800;"></div>
+        <span>Medium contribution (50-90%)</span>
+      </div>
+      <div class="legend-item">
+        <div class="color-box" style="background: #ffff00;"></div>
+        <span>Low contribution (10-50%)</span>
+      </div>
+      <div class="legend-item">
+        <div class="color-box" style="background: #0000ff;"></div>
+        <span>Sensor</span>
+      </div>
+    </div>
+    
+    <div style="margin-top: 15px; padding: 15px; background: #e3f2fd; border-radius: 8px; font-size: 14px; text-align: center;">
+      <strong>Footprint Visualization:</strong> Shows upwind areas contributing to sensor measurements. 
+      Wind flows from left to right toward the sensor. Sensor located at right edge (blue circle).
+    </div>
+  </div>
+
+  <script>
+    function calculateFootprint(x, y, height, stability) {
+      if (x <= 0) return 0;
+      
+      // Corrected stability parameters
+      // More stable = longer footprint extending further upwind (less mixing)
+      // More unstable = shorter footprint closer to sensor (more mixing)
+      const params = {
+        very_stable: { P: 0.3, mu: 0.6, sigma: 0.15 },     // Long, extends far upwind
+        stable: { P: 0.6, mu: 0.8, sigma: 0.18 },
+        neutral: { P: 1.0, mu: 1.0, sigma: 0.20 },
+        slightly_unstable: { P: 1.8, mu: 1.3, sigma: 0.25 },
+        unstable: { P: 2.5, mu: 1.6, sigma: 0.35 }         // Short, close to sensor
+      };
+      
+      const p = params[stability];
+      const xi = x / height;
+      
+      if (xi <= 0.1) return 0;
+      
+      // Longitudinal footprint (Kormann & Meixner model)
+      const f_long = Math.pow(xi, -p.mu) * Math.exp(-p.P / xi);
+      
+      // Lateral spread increases with instability
+      const sigma_y = p.sigma * Math.sqrt(x);
+      const f_lat = Math.exp(-(y * y) / (2 * sigma_y * sigma_y));
+      
+      return f_long * f_lat;
+    }
+
+    function drawFootprint() {
+      const canvas = document.getElementById('footprintCanvas');
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height_canvas = canvas.height;
+      
+      const height = parseInt(document.getElementById('height').value);
+      const stability = document.getElementById('stability').value;
+      
+      document.getElementById('heightVal').textContent = height;
+      
+      // Clear canvas
+      ctx.fillStyle = '#f8f9fa';
+      ctx.fillRect(0, 0, width, height_canvas);
+      
+      // Set up coordinate system - sensor on RIGHT, footprint extends LEFT (upwind)
+      const maxDistance = Math.max(300, height * 15);
+      const maxCrosswind = 150;
+      const sensorX = width - 50; // Sensor position from right
+      const sensorY = height_canvas / 2;
+      
+      // Calculate footprint values
+      let maxFootprint = 0;
+      const footprintData = [];
+      
+      for (let canvasX = 0; canvasX < sensorX; canvasX += 2) {
+        for (let canvasY = 0; canvasY < height_canvas; canvasY += 2) {
+          const realX = ((sensorX - canvasX) / sensorX) * maxDistance; // Distance upwind
+          const realY = ((canvasY - sensorY) / (height_canvas / 2)) * maxCrosswind;
+          
+          const footprint = calculateFootprint(realX, realY, height, stability);
+          if (footprint > 0) {
+            footprintData.push({ x: canvasX, y: canvasY, value: footprint });
+            maxFootprint = Math.max(maxFootprint, footprint);
+          }
+        }
+      }
+      
+      // Draw footprint with colors
+      footprintData.forEach(point => {
+        const intensity = point.value / maxFootprint;
+        let color;
+        
+        if (intensity > 0.9) {
+          color = `rgba(255, 0, 0, 0.8)`; // Red for high
+        } else if (intensity > 0.5) {
+          color = `rgba(255, 136, 0, 0.6)`; // Orange for medium
+        } else if (intensity > 0.1) {
+          color = `rgba(255, 255, 0, 0.4)`; // Yellow for low
+        } else {
+          color = `rgba(0, 0, 255, 0.1)`; // Very light blue for minimal
+        }
+        
+        ctx.fillStyle = color;
+        ctx.fillRect(point.x, point.y, 3, 3);
+      });
+      
+      // Draw grid
+      ctx.strokeStyle = '#ddd';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const x = (i / 10) * sensorX;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height_canvas);
+        ctx.stroke();
+      }
+      
+      for (let i = 0; i <= 8; i++) {
+        const y = (i / 8) * height_canvas;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+      
+      // Draw sensor
+      ctx.fillStyle = '#0066cc';
+      ctx.beginPath();
+      ctx.arc(sensorX, sensorY, 8, 0, 2 * Math.PI);
+      ctx.fill();
+      
+      // Draw wind arrow (pointing toward sensor, left to right)
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(50, 30);
+      ctx.lineTo(110, 30);
+      ctx.stroke();
+      
+      // Arrow head pointing right (toward sensor)
+      ctx.beginPath();
+      ctx.moveTo(100, 25);
+      ctx.lineTo(110, 30);
+      ctx.lineTo(100, 35);
+      ctx.stroke();
+      
+      // Labels
+      ctx.fillStyle = '#333';
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('WIND', 80, 50);
+      ctx.fillText('Sensor', sensorX, sensorY - 15);
+      
+      // Distance labels (upwind distances)
+      for (let i = 0; i <= 5; i++) {
+        const x = (i / 5) * sensorX;
+        const dist = Math.round(((5 - i) / 5) * maxDistance); // Reverse for upwind
+        ctx.fillText(`${dist}m`, x, height_canvas - 5);
+      }
+      
+      // X-axis label
+      ctx.font = '14px Arial';
+      ctx.fillText('Upwind Distance (m)', sensorX / 2, height_canvas - 25);
+      
+      // Crosswind labels (y-axis style)
+      ctx.font = '12px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(`+${maxCrosswind}m`, 5, 20);
+      ctx.fillText('0m', 5, sensorY + 5);
+      ctx.fillText(`-${maxCrosswind}m`, 5, height_canvas - 10);
+      
+      // Y-axis label (rotated)
+      ctx.save();
+      ctx.translate(15, height_canvas / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Crosswind Distance (m)', 0, 0);
+      ctx.restore();
+    }
+
+    // Event listeners
+    document.getElementById('height').addEventListener('input', drawFootprint);
+    document.getElementById('stability').addEventListener('change', drawFootprint);
+    
+    // Initial draw
+    drawFootprint();
+  </script>
+</body>
+</html>
